@@ -5,19 +5,17 @@ const { db } = require('./firebase');
 app.use(express.json())
 
 //finish login
-app.post('/login', async (req, res) => {
-    console.log(req.body.username);
-    const username = req.body.username;
-    const password = req.body.password;
+app.get('/login', async (req, res) => {
+    console.log(req.query);
+    const username = req.query.username;
+    const password = req.query.password;
     const querySnapshot = await db.collection('User').get();
-    console.log(querySnapshot.docs[0].data()["user-name"]);
-    res.send(await validarUser(querySnapshot.docs, username, password));
+    res.json(await validarUser(querySnapshot.docs, username, password));
 
 })
 
 validarUser = (docs, username, password) => {
     for (const user of docs) {
-        console.log(user.data());
         if (user.data()["user-name"] === username && user.data()["password"] === password) {
             return {
                 "status": "true",
@@ -32,10 +30,34 @@ validarUser = (docs, username, password) => {
     }
 }
 
-app.post('/add-equipo-medico', (req, res) => {
-    res.send('equipo-medico');
+app.post('/add-equipo-medico', async (req, res) => {
+    const nombre = req.body.nombre;
+    const marca = req.body.marca;
+    const piezas = req.body.piezas;
+    const referencia = req.body.referencia;
+    const querySnapshot = await db.collection("Medicos").add({
+        "name": nombre,
+        marca,
+        piezas,
+        referencia
+    });
+    res.send({
+        "status": "true",
+        "message": "chidoo"
+    })
 })
 
+app.get('/equipo-medico', async (req, res) => {
+    const querySnapshot = await db.collection('Medicos').get();
+    console.log(querySnapshot.docs[0].data());
+    let photoList = [];
+    for (const photo of querySnapshot.docs) {
+        photoList.push(photo.data());
+    }
+    res.send({
+        "data": photoList
+    });
+})
 
 app.post('/add-consumibles', async (req, res) => {
     const nombre = req.body.nombre;
@@ -79,12 +101,28 @@ app.get('/consumibles', async (req, res) => {
         "data": photoList
     });
 })
+app.get('/search-consumible', async (req, res) => {
+    const query = req.query.query;
+
+    const querySnapshot = await db.collection('Consumibles').get();
+    let consumibles = [];
+    for (const consumible of querySnapshot.docs) {
+        const nombre = consumible.get("name");
+        if (nombre.toLowerCase().startsWith(query.toLowerCase())) {
+            consumibles.push(nombre);
+        }
+    }
+    res.json({
+        "data": consumibles
+    });
+})
 
 app.get('/', async (req, res) => {
     res.send({
         "talk": "hello"
     });
 })
+
 
 app.listen('3000', () => {
     console.log("Server inicialized");
