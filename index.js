@@ -5,6 +5,10 @@ const multer = require('multer');
 const cloudinary = require('cloudinary');
 const { response } = require("express");
 const upload = multer({ dest: 'uploads/' });
+const http = require("http");
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server);
 
 
 
@@ -24,7 +28,7 @@ app.get('/login', async (req, res) => {
     const username = req.query.username;
     const password = req.query.password;
     const querySnapshot = await db.collection('User').get();
-    res.json(await validarUser(querySnapshot.docs, username, password));
+    res.json(await validarUser(querySnapshot, username, password));
 
 })
 
@@ -43,13 +47,18 @@ app.post('/create-account', async (req, res) => {
     });
 })
 
-validarUser = (docs, username, password) => {
-    for (const user of docs) {
+validarUser = (querySnapshot, username, password) => {
+    for (const user of querySnapshot.docs) {
         if (user.data()["user-name"] === username && user.data()["password"] === password) {
             return {
                 "status": "true",
                 "message": "authorization",
-                "rol": user.data()["rol"]
+                "rol": user.data()["rol"],
+                "user": {
+                    "id": user.id,
+                    "rol": user.data()["rol"],
+                    "name": user.data()["user-name"]
+                }
             };
         }
     }
@@ -60,10 +69,10 @@ validarUser = (docs, username, password) => {
 }
 
 app.post('/add-equipo-medico', upload.array("img"), async (req, res) => {
-  const response = await cloudinary.uploader.upload(
-    req.files[0]["path"],
-  )
-  console.log(response.url);
+    const response = await cloudinary.uploader.upload(
+        req.files[0]["path"],
+    )
+    console.log(response.url);
     const nombre = req.body.nombre;
     const marca = req.body.marca;
     const piezas = req.body.piezas;
@@ -83,12 +92,19 @@ app.post('/add-equipo-medico', upload.array("img"), async (req, res) => {
 
 app.get('/equipo-medico', async (req, res) => {
     const querySnapshot = await db.collection('Medicos').get();
-    let photoList = [];
-    for (const photo of querySnapshot.docs) {
-        photoList.push(photo.data());
+    let medicalList = [];
+    for (const medical of querySnapshot.docs) {
+        medicalList.push({
+            "img": medical.get("img"),
+            "marca": medical.get("marca"),
+            "name": medical.get("name"),
+            "piezas": medical.get("piezas"),
+            "referencia": medical.get("referencia"),
+            "id": medical.id
+        });
     }
     res.send({
-        "data": photoList
+        "data": medicalList
     });
 })
 
@@ -102,10 +118,10 @@ app.post('/add-consumibles', upload.array("img"), async (req, res) => {
     const compatible = req.body.compatible;
     const response = await cloudinary.uploader.upload(
         req.files[0]["path"],
-      );
+    );
 
     if (nombre != "" && marca != "" && piezas != "") {
-        const res = await db.collection("Consumibles").add({
+        const resp = await db.collection("Consumibles").add({
             "name": nombre,
             marca,
             piezas,
@@ -115,18 +131,62 @@ app.post('/add-consumibles', upload.array("img"), async (req, res) => {
             "compatible-con": compatible,
             "img": response.url
         });
-        console.log(res);
-        res.send({
+        res.json({
             "status": "true"
         })
     } else {
-        res.send({
+        res.json({
             "status": "false",
             "message": "ocurrio algo inesperado"
         });
     }
 })
 
+app.post("/add-notifi", async (req,res) => {
+    const nombre = req.body.nombre;
+    const id = req.body.id;
+    const producto = req.body.producto;
+    const typeProduct = req.body.typeProduct;
+    const totalProduct = req.body.total;
+
+    const qury = await db.collection("Notifications").add({
+        nombre,
+        producto
+    });
+
+    if (typeProduct == "medical") {
+     await db.collection("Medicos").doc(id).update({"piezas":totalProduct})
+    }else{
+     await db.collection("Consumibles").doc(id).update({"piezas":totalProduct})
+    }
+
+    res.send({
+        "data": "true"
+    });
+})
+app.get("/notifiaction", async (req, res) => {
+    const querySnapshot = await db.collection('Notifications').get();
+    let notificacions = [];
+    for (const noti of querySnapshot.docs) {
+        notificacions.push({
+            "nombre": noti.get("nombre"),
+            "id": noti.get("id"),
+            "producto": noti.get("producto"),
+            "id-noti": noti.id
+        });
+    }
+    res.json({
+        "data": notificacions
+    })
+})
+
+app.post("/accept-noti", async (req,res) => {
+    const querey = await db.collection("Notifications").doc(req.body.id).delete();
+   res.send({
+    "status": "true"
+   })
+
+})
 app.get('/consumibles', async (req, res) => {
     const querySnapshot = await db.collection('Consumibles').get();
     let photoList = [];
@@ -182,12 +242,22 @@ app.get('/search-medical', async (req, res) => {
 })
 
 app.get('/', async (req, res) => {
+    console.log("hollala");
     res.send({
         "talk": "hello"
     });
 })
 
 
-app.listen('3000', () => {
+
+io.on('connection', (socket) => {
+    console.log("a user connected");
+    socket.on("msg", (msg) => {
+        console.log(msg);
+    })
+})
+
+
+server.listen('3000', '0.0.0.0', () => {
     console.log("Server inicialized");
 });
